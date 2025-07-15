@@ -97,80 +97,30 @@ ACTION_MAP = {
 def update_action():
     arm_motor.reset_angle(0)
     action_timer.reset()
-
-    # Drive forward for 4 seconds to leave stand, then stop.
-    yield FORWARD_SLOW
-    while action_timer.time() < 4000:
-        yield
-
     action = STOP
-    yield action
-
-    # Start checking sensors on arms. When specific conditions are sensed,
-    # different actions will be performed.
     while True:
-        if color_sensor.color() == Color.BLUE and ultrasonic_sensor.distance() < 150:
-            yield FORWARD_FAST
-
-        # First, we check the color sensor. The detected color is looked up in
-        # the action map.
-        new_action = ACTION_MAP.get(color_sensor.color())
-
-        # If the color was found, beep for 0.1 seconds and then change the
-        # action depending on which color was detected.
-        if new_action is not None:
-            action_timer.reset()
-            ev3.speaker.beep(1000, -1)
-            while action_timer.time() < 100:
-                yield
-            ev3.speaker.beep(0, -1)
-
-            # If the new action involves steering, combine the new steering
-            # with the old drive speed. Otherwise, use the entire new action.
-            if new_action.steering != 0:
-                action = Action(drive_speed=action.drive_speed,
-                                steering=new_action.steering)
+        current_color = color_sensor.color()
+        distance = ultrasonic_sensor.distance()  # 单位为毫米
+        if current_color == Color.BLUE:
+            if distance < 200:
+                # 蓝色且距离小于20cm -> 快速前进
+                if action != FORWARD_FAST:
+                    ev3.speaker.beep(1000, -1)
+                    action = FORWARD_FAST
+                    yield action
             else:
-                action = new_action
-            yield action
-
-        # If the measured distance of the ultrasonic sensor is less than 250
-        # millimeters, then back up slowly.
-        if ultrasonic_sensor.distance() < 250:
-            # Back up slowly while wiggling the arms back and forth.
-            yield BACKWARD_SLOW
-
-            arm_motor.run_angle(ARM_MOTOR_SPEED, 30, wait=False)
-            while not arm_motor.control.done():
-                yield
-            arm_motor.run_angle(ARM_MOTOR_SPEED, -60, wait=False)
-            while not arm_motor.control.done():
-                yield
-            arm_motor.run_angle(ARM_MOTOR_SPEED, 30, wait=False)
-            while not arm_motor.control.done():
-                yield
-
-            # Randomly turn left or right for 4 seconds while still backing
-            # up slowly.
-            turn = urandom.choice([TURN_LEFT, TURN_RIGHT])
-            yield Action(drive_speed=BACKWARD_SLOW.drive_speed,
-                         steering=turn.steering)
-            action_timer.reset()
-            while action_timer.time() < 4000:
-                yield
-
-            # Beep and then restore the previous action from before the
-            # ultrasonic sensor detected an obstruction.
-            action_timer.reset()
-            ev3.speaker.beep(1000, -1)
-            while action_timer.time() < 100:
-                yield
-            ev3.speaker.beep(0, -1)
-
-            yield action
-
-        # This adds a small delay since we don't need to read these sensors
-        # continuously. Reading once every 100 milliseconds is fast enough.
+                # 蓝色但距离大于20cm -> 慢速前进
+                if action != FORWARD_SLOW:
+                    ev3.speaker.beep(800, -1)
+                    action = FORWARD_SLOW
+                    yield action
+        else:
+            # 非蓝色 -> 原地转圈
+            if action != TURN_RIGHT:
+                ev3.speaker.beep(600, -1)
+                action = TURN_RIGHT
+                yield action
+        # 等待一点时间，避免读取过于频繁
         action_timer.reset()
         while action_timer.time() < 100:
             yield
